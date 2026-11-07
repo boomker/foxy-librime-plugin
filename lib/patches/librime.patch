@@ -1,0 +1,26 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -154,7 +154,9 @@ if(X11Keysym)
+   message(STATUS "Found X11/keysym.h at ${X11Keysym}")
+   include_directories(${X11Keysym})
+ else()
+-  message(WARNING "X11/keysym.h not found.")
++  if(NOT ANDROID)
++    message(WARNING "X11/keysym.h not found.")
++  endif()
+ endif()
+ 
+ configure_file(
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -165,6 +165,8 @@ if(BUILD_SHARED_LIBS)
+ else()
+   add_library(rime-static STATIC ${rime_src})
+   target_link_libraries(rime-static ${rime_deps})
++  target_compile_options(rime-static PRIVATE "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
++  target_compile_definitions(rime-static PRIVATE BOOST_DISABLE_CURRENT_LOCATION BOOST_ALL_NO_EMBEDDED_GDB_SCRIPTS)
+   set_target_properties(rime-static PROPERTIES
+     OUTPUT_NAME "rime" PREFIX "lib"
+     ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)

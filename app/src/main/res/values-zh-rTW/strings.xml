@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rime 外掛範本</string>
+    <string name="plugin_title">Rime 外掛範本</string>
+    <string name="plugin_description">此應用為支援外部原生後端的 Rime 前端提供 librime.so。在前端中切換選擇使用。</string>
+</resources>

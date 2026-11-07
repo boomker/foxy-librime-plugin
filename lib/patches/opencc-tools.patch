@@ -1,0 +1,10 @@
+diff --git a/deps/opencc/src/CMakeLists.txt b/deps/opencc/src/CMakeLists.txt
+--- a/deps/opencc/src/CMakeLists.txt
++++ b/deps/opencc/src/CMakeLists.txt
+@@ -264,3 +264,5 @@
+ # Subdir
+ 
+-add_subdirectory(tools)
++if(NOT ANDROID)
++  add_subdirectory(tools)
++endif()

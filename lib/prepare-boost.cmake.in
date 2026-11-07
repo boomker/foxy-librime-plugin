@@ -1,0 +1,24 @@
+set(RIME_BOOST_ROOT "@RIME_BOOST_ROOT@")
+set(RIME_BOOST_ARCHIVE "@RIME_BOOST_ARCHIVE@")
+set(RIME_COMMON_BUILD_ROOT "@RIME_COMMON_BUILD_ROOT@")
+
+file(LOCK "${RIME_COMMON_BUILD_ROOT}/.boost.lock" GUARD PROCESS TIMEOUT 1800)
+if(NOT EXISTS "${RIME_BOOST_ROOT}/boost/version.hpp")
+    file(MAKE_DIRECTORY "${RIME_BOOST_ROOT}")
+    execute_process(
+        COMMAND "@CMAKE_COMMAND@" -E copy_if_different "${RIME_BOOST_ARCHIVE}"
+            "${RIME_COMMON_BUILD_ROOT}/boost.tar.gz"
+        RESULT_VARIABLE copy_result)
+    if(NOT copy_result EQUAL 0)
+        message(FATAL_ERROR "Failed to copy Boost archive: ${copy_result}")
+    endif()
+    execute_process(
+        COMMAND tar -xzf "${RIME_COMMON_BUILD_ROOT}/boost.tar.gz"
+            -C "${RIME_BOOST_ROOT}" --strip-components=1
+        RESULT_VARIABLE result)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Failed to extract Boost: ${result}")
+    endif()
+    file(REMOVE "${RIME_COMMON_BUILD_ROOT}/boost.tar.gz")
+endif()
+file(LOCK "${RIME_COMMON_BUILD_ROOT}/.boost.lock" RELEASE)

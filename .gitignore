@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+.cxx/
+local.properties
+*.iml
+.idea/
+boost_1_89_0.tar.gz
+keystore.properties
+*.jks
+*.keystore

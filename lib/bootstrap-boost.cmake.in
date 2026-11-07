@@ -1,0 +1,19 @@
+set(RIME_BOOST_ROOT "@RIME_BOOST_ROOT@")
+set(RIME_BOOST_B2 "@RIME_BOOST_B2@")
+set(RIME_COMMON_BUILD_ROOT "@RIME_COMMON_BUILD_ROOT@")
+
+file(LOCK "${RIME_COMMON_BUILD_ROOT}/.boost.lock" GUARD PROCESS TIMEOUT 1800)
+if(NOT EXISTS "${RIME_BOOST_B2}")
+    execute_process(
+        COMMAND "@RIME_BASH@" "${RIME_BOOST_ROOT}/bootstrap.sh"
+            --with-libraries=container,iostreams,random,regex
+        WORKING_DIRECTORY "${RIME_BOOST_ROOT}"
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE output
+        ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR
+            "Failed to bootstrap Boost: ${result}\n${output}\n${error}")
+    endif()
+endif()
+file(LOCK "${RIME_COMMON_BUILD_ROOT}/.boost.lock" RELEASE)

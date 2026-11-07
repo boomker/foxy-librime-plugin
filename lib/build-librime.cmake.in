@@ -1,0 +1,70 @@
+set(RIME_SOURCE "@RIME_SOURCE_COPY@")
+set(RIME_BINARY "@RIME_BUILD_ROOT@/build-librime")
+set(RIME_PREFIX "@RIME_PREFIX@")
+
+set(RIME_NEEDS_CONFIGURE TRUE)
+if(EXISTS "${RIME_BINARY}/CMakeCache.txt")
+    file(READ "${RIME_BINARY}/CMakeCache.txt" RIME_CACHE)
+    if(NOT RIME_CACHE MATCHES "CMAKE_GENERATOR:INTERNAL=Ninja"
+        OR NOT RIME_CACHE MATCHES "Boost_INCLUDE_DIR:PATH=@RIME_BOOST_ROOT@"
+        OR NOT RIME_CACHE MATCHES "BUILD_SHARED_LIBS:BOOL=ON"
+        OR NOT RIME_CACHE MATCHES "BUILD_STATIC:BOOL=ON"
+        OR NOT RIME_CACHE MATCHES "BUILD_MERGED_PLUGINS:BOOL=ON"
+        OR NOT RIME_CACHE MATCHES "BUILD_SEPARATE_LIBS:BOOL=OFF"
+        OR NOT RIME_CACHE MATCHES "CMAKE_C_FLAGS_RELEASE:STRING=-Oz -g0"
+        OR NOT RIME_CACHE MATCHES "CMAKE_CXX_FLAGS_RELEASE:STRING=-Oz -g0"
+        OR NOT RIME_CACHE MATCHES "CMAKE_INTERPROCEDURAL_OPTIMIZATION:.*=ON")
+        file(REMOVE_RECURSE "${RIME_BINARY}")
+    else()
+        set(RIME_NEEDS_CONFIGURE FALSE)
+    endif()
+endif()
+
+if(RIME_NEEDS_CONFIGURE)
+    execute_process(
+        COMMAND "@CMAKE_COMMAND@" -E env "RIME_PLUGINS=@RIME_PLUGIN_ENV@"
+            "@CMAKE_COMMAND@" -S "${RIME_SOURCE}" -B "${RIME_BINARY}" -G Ninja
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_VERBOSE_MAKEFILE=OFF
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+            "-DCMAKE_C_FLAGS_RELEASE=-Oz -g0"
+            "-DCMAKE_CXX_FLAGS_RELEASE=-Oz -g0"
+            -DCMAKE_TOOLCHAIN_FILE=@CMAKE_TOOLCHAIN_FILE@
+            -DANDROID_ABI=@ANDROID_ABI@
+            -DANDROID_PLATFORM=@ANDROID_PLATFORM@
+            -DCMAKE_INSTALL_PREFIX=${RIME_PREFIX}
+            -DBUILD_SHARED_LIBS=ON
+            -DBUILD_STATIC=ON
+            -DBUILD_TEST=OFF
+            -DBUILD_TOOLS=OFF
+            -DBUILD_MERGED_PLUGINS=ON
+            -DBUILD_SEPARATE_LIBS=OFF
+            -DALSO_LOG_TO_STDERR=ON
+            -DCMAKE_PREFIX_PATH=${RIME_PREFIX}
+            -DBOOST_ROOT=@RIME_BOOST_ROOT@
+            -DBoost_INCLUDE_DIR=@RIME_BOOST_ROOT@
+            -DBoost_NO_SYSTEM_PATHS=ON
+            -DCMAKE_FIND_ROOT_PATH=${RIME_PREFIX}
+            -Wno-dev
+        RESULT_VARIABLE configure_result)
+    if(NOT configure_result EQUAL 0)
+        message(FATAL_ERROR "Failed to configure librime: ${configure_result}")
+    endif()
+endif()
+
+execute_process(
+    COMMAND "@RIME_BASH@" -c
+        "CMAKE_BUILD_PARALLEL_LEVEL=@RIME_PARALLEL_JOBS@ '@CMAKE_COMMAND@' --build '${RIME_BINARY}' 1>&2"
+    RESULT_VARIABLE build_result)
+if(NOT build_result EQUAL 0)
+    message(FATAL_ERROR "Failed to build librime: ${build_result}")
+endif()
+
+execute_process(
+    COMMAND "@RIME_BASH@" -c
+        "'@CMAKE_COMMAND@' --build '${RIME_BINARY}' --target install 1>&2"
+    RESULT_VARIABLE install_result)
+if(NOT install_result EQUAL 0)
+    message(FATAL_ERROR "Failed to install librime: ${install_result}")
+endif()

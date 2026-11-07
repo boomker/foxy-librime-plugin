@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rime Plugin Template</string>
+    <string name="plugin_title">Rime Plugin Template</string>
+    <string name="plugin_description">This app provides a librime.so payload for Rime frontends that support external native backends. Switch to it in your frontend.</string>
+</resources>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name">
+
+        <!--
+            Neutral Rime backend contract.
+
+            A frontend discovers this app by the MANIFEST action on the Activity
+            below, then loads File(nativeLibraryDir, SONAME) and validates it
+            against RIME_API_ABI. These keys describe the payload only; they are
+            not tied to any frontend.
+
+            Forking this template: change PLUGIN_ID, LIBRIME_VERSION and the app
+            label here (and SONAME if your library file is not librime.so).
+        -->
+        <meta-data
+            android:name="org.rime.plugin.API_VERSION"
+            android:value="1" />
+        <meta-data
+            android:name="org.rime.plugin.RIME_API_ABI"
+            android:value="1" />
+        <meta-data
+            android:name="org.rime.plugin.PLUGIN_ID"
+            android:value="template" />
+        <meta-data
+            android:name="org.rime.plugin.SONAME"
+            android:value="librime.so" />
+        <meta-data
+            android:name="org.rime.plugin.LIBRIME_VERSION"
+            android:value="1.17.0" />
+        <meta-data
+            android:name="org.rime.plugin.CHANNEL"
+            android:value="${pluginChannel}" />
+
+        <!--
+            Optional frontend-specific adapter.
+
+            A frontend that does not adopt the neutral contract can be supported
+            by adding a metadata block in that frontend's own namespace and a
+            matching intent-filter on the Activity, for example:
+
+                <meta-data
+                    android:name="com.example.frontend.rime.plugin.API_VERSION"
+                    android:value="1" />
+                ... RIME_API_ABI, PLUGIN_ID, SONAME, LIBRIME_VERSION, CHANNEL
+
+            and on the Activity:
+
+                <intent-filter>
+                    <action android:name="com.example.frontend.rime.plugin.MANIFEST" />
+                    <category android:name="android.intent.category.DEFAULT" />
+                </intent-filter>
+
+            A frontend that reads the neutral contract above needs no adapter
+            block.
+        -->
+
+        <activity
+            android:name=".InfoActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.rime.plugin.MANIFEST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,23 @@
+diff --git a/deps/glog/CMakeLists.txt b/deps/glog/CMakeLists.txt
+--- a/deps/glog/CMakeLists.txt
++++ b/deps/glog/CMakeLists.txt
+@@ -461,8 +461,4 @@
+ endif (gflags_FOUND)
+ 
+-if (ANDROID)
+-  target_link_libraries (glog PRIVATE log)
+-  set (glog_libraries_options_for_static_linking "${glog_libraries_options_for_static_linking} -llog")
+-endif (ANDROID)
+ 
+ set_target_properties (glog PROPERTIES VERSION ${glog_VERSION})
+diff --git a/deps/glog/src/glog/platform.h b/deps/glog/src/glog/platform.h
+--- a/deps/glog/src/glog/platform.h
++++ b/deps/glog/src/glog/platform.h
+@@ -41,7 +41,4 @@
+ #elif defined(linux) || defined(__linux) || defined(__linux__)
+ #  define GLOG_OS_LINUX
+-#  if defined(__ANDROID__)
+-#    define GLOG_OS_ANDROID
+-#  endif
+ #elif defined(macintosh) || defined(__APPLE__) || defined(__APPLE_CC__)
+ #  define GLOG_OS_MACOSX
