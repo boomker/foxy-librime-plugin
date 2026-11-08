@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Rime 插件模板</string>
-    <string name="plugin_title">Rime 插件模板</string>
-    <string name="plugin_description">此应用为支持外部原生后端的 Rime 前端提供 librime.so。在前端中切换选择使用。</string>
+    <string name="app_name">中州韵・浮光</string>
+    <string name="plugin_title">中州韵・浮光</string>
+    <string name="plugin_description">以 librime.so 形式提供 boomker librime fork，供 Foxy 及其他支持外部原生后端的 Rime 前端使用。在 Foxy 的 Rime engine → Rime engine backend 中选择启用。</string>
 </resources>

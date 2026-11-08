@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.10)
- aux_source_directory(src predict_src)
+@@ -9,6 +9,8 @@ find_package(SQLite3 REQUIRED)
+ include_directories(${SQLite3_INCLUDE_DIRS})
  
  add_library(rime-predict-objs OBJECT ${predict_src})
 +target_compile_options(rime-predict-objs PRIVATE "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
@@ -10,3 +10,12 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
  if(BUILD_SHARED_LIBS)
    set_target_properties(rime-predict-objs
      PROPERTIES
+@@ -18,7 +20,7 @@
+     POSITION_INDEPENDENT_CODE ON)
+ endif()
+ 
+ set(plugin_name rime-predict PARENT_SCOPE)
+ set(plugin_objs $<TARGET_OBJECTS:rime-predict-objs> PARENT_SCOPE)
+-set(plugin_deps ${rime_library} leveldb sqlite3 PARENT_SCOPE)
++set(plugin_deps ${rime_library} ${LevelDb_LIBRARY} ${SQLite3_LIBRARIES} PARENT_SCOPE)
+ set(plugin_modules "predict" PARENT_SCOPE)

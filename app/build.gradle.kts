@@ -21,6 +21,13 @@ val ndkVersionName = localProperties.getProperty("rime.ndkVersion", "29.0.142068
 val cmakeVersion = localProperties.getProperty("rime.cmakeVersion", "4.2.1")
 val buildToolsVersionName = localProperties.getProperty("rime.buildToolsVersion", "37.0.0")
 
+// Optional out-of-tree librime checkout (for example a fork under active
+// development). The default is the lib/librime submodule. Set rime.sourceDir
+// in local.properties or pass -PrimeSourceDir=/path/to/librime.
+val rimeSourceDir = providers.gradleProperty("rimeSourceDir").orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: localProperties.getProperty("rime.sourceDir")?.takeIf { it.isNotBlank() }
+
 // Standard Android signing setup. Local builds can copy
 // keystore.properties.example to keystore.properties; CI should inject the
 // keystore through environment variables instead. Neither the real properties
@@ -52,13 +59,13 @@ val rimeBuildRoot = providers.gradleProperty("rimeBuildRoot")
 val boostArchive = rootProject.layout.projectDirectory.file("boost_1_89_0.tar.gz").asFile.absolutePath
 
 android {
-    namespace = "org.rime.plugin.template"
+    namespace = "org.rime.plugin.fx_librime"
     compileSdk = 36
     this.buildToolsVersion = buildToolsVersionName
     ndkVersion = ndkVersionName
 
     defaultConfig {
-        applicationId = "org.rime.plugin.template"
+        applicationId = "org.rime.plugin.fx_librime"
         minSdk = 23
         targetSdk = 36
         versionCode = 1
@@ -67,13 +74,17 @@ android {
         externalNativeBuild {
             cmake {
                 targets("plugin_template")
-                arguments(
+                val cmakeArguments = mutableListOf(
                     "-DANDROID_STL=c++_static",
                     "-DRIME_PLUGINS=$rimePlugins",
                     "-DRIME_BUILD_ROOT=$rimeBuildRoot",
                     "-DRIME_BOOST_ARCHIVE=$boostArchive",
                     "-DRIME_JNILIBS_DIR=${layout.buildDirectory.get().asFile}/generated/rimeJniLibs",
                 )
+                rimeSourceDir?.let {
+                    cmakeArguments += "-DRIME_SOURCE_DIR=${rootProject.file(it).absolutePath}"
+                }
+                arguments(*cmakeArguments.toTypedArray())
             }
         }
     }
@@ -130,8 +141,8 @@ android {
     }
 
     sourceSets {
-        getByName("main").jniLibs.srcDir(
-            layout.buildDirectory.dir("generated/rimeJniLibs").get().asFile,
+        getByName("main").jniLibs.directories.add(
+            layout.buildDirectory.dir("generated/rimeJniLibs").get().asFile.absolutePath,
         )
     }
 
@@ -149,6 +160,15 @@ tasks.register<Delete>("rimeClean") {
 
 androidComponents {
     onVariants { variant ->
+        val variantCamelName = variant.name.replaceFirstChar { c -> c.uppercaseChar() }
+        // CMake's POST_BUILD stages librime.so into generated/rimeJniLibs only
+        // AFTER the jni-merge tasks have already consumed the empty directory
+        // on a cold build, so the packaged APK would miss librime.so. Order
+        // each variant's jni merge after that variant's CMake build tasks
+        // (buildCMakeDebug[abi]).
+        tasks.named { it == "merge${variantCamelName}JniLibFolders" }.configureEach {
+            dependsOn(tasks.matching { it.name.startsWith("buildCMake$variantCamelName") })
+        }
         val applicationId = variant.applicationId.get()
         variant.outputs.forEach { output ->
             // ABI split outputs carry an ABI filter; the universal APK does not.

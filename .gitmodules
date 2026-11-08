@@ -1,3 +1,3 @@
 [submodule "lib/librime"]
 	path = lib/librime
-	url = https://github.com/rime/librime.git
+	url = https://github.com/boomker/librime.git

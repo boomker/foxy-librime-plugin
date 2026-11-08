@@ -6,7 +6,11 @@ app/.cxx/
 local.properties
 *.iml
 .idea/
+logs/
+.claude/
+.codegraph/
 boost_1_89_0.tar.gz
 keystore.properties
 *.jks
 *.keystore
+

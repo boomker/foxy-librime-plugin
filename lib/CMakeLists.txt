@@ -4,7 +4,8 @@ project(rime_plugin_dependencies LANGUAGES C CXX)
 
 include(ExternalProject)
 
-set(RIME_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/librime")
+set(RIME_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/librime" CACHE PATH
+    "librime source directory (defaults to the lib/librime submodule)")
 set(RIME_PATCH_DIR "${CMAKE_CURRENT_LIST_DIR}/patches")
 execute_process(
     COMMAND git -C "${RIME_SOURCE_DIR}" rev-parse HEAD
@@ -98,6 +99,7 @@ file(MAKE_DIRECTORY "${RIME_BUILD_ROOT}")
 set(RIME_SOURCE_REVISION_STAMP "${RIME_COMMON_BUILD_ROOT}/librime-source-revision.txt")
 set(RIME_PLUGIN_STAMP "${RIME_COMMON_BUILD_ROOT}/librime-plugins.txt")
 set(RIME_PATCH_STAMP "${RIME_COMMON_BUILD_ROOT}/librime-patches.txt")
+set(RIME_SOURCE_DIR_STAMP "${RIME_COMMON_BUILD_ROOT}/librime-source-dir.txt")
 set(RIME_APPLIED_PATCH_DIR "${RIME_COMMON_BUILD_ROOT}/applied-patches")
 
 set(RIME_DESIRED_PATCH_STATE "")
@@ -120,11 +122,20 @@ set(RIME_CURRENT_PATCH_STATE "")
 if(EXISTS "${RIME_PATCH_STAMP}")
     file(READ "${RIME_PATCH_STAMP}" RIME_CURRENT_PATCH_STATE)
 endif()
+set(RIME_CURRENT_SOURCE_DIR "")
+if(EXISTS "${RIME_SOURCE_DIR_STAMP}")
+    file(READ "${RIME_SOURCE_DIR_STAMP}" RIME_CURRENT_SOURCE_DIR)
+endif()
 function(rime_apply_plugin_patch plugin_name patch_name)
     if(EXISTS "${RIME_SOURCE_COPY}/plugins/${plugin_name}")
+        # Run from the copy root with --directory: git apply resolves patch
+        # paths against the repository root, so applying from the plugin
+        # subdirectory would silently match nothing (git apply exits 0 while
+        # ignoring every file outside the current directory).
         execute_process(
-            COMMAND git apply "${RIME_PATCH_DIR}/${patch_name}"
-            WORKING_DIRECTORY "${RIME_SOURCE_COPY}/plugins/${plugin_name}"
+            COMMAND git apply --directory=plugins/${plugin_name}
+                "${RIME_PATCH_DIR}/${patch_name}"
+            WORKING_DIRECTORY "${RIME_SOURCE_COPY}"
             RESULT_VARIABLE patch_result)
         if(NOT patch_result EQUAL 0)
             message(FATAL_ERROR "Failed to apply plugin patch: ${patch_name}")
@@ -145,11 +156,48 @@ function(rime_patch_dir out patch_name)
     set(${out} "${patch_dir}" PARENT_SCOPE)
 endfunction()
 
-macro(rime_full_prepare)
+# Top-level directories that belong to a local librime checkout but are not
+# part of the buildable source tree. Keeping them out of the copy also makes an
+# out-of-tree fork (for example a development checkout) cheap to consume.
+set(RIME_SOURCE_TOP_LEVEL_EXCLUDES
+    ".git" ".github" ".cache" ".codegraph" ".gitnexus"
+    ".claude" ".agents" ".omx" ".vscode"
+    "build" "debug" "logs" "bin" "lib" "rime-lua")
+# Nested artifacts that may appear inside deps/ and plugins/. Do not add
+# "debug" here: msgpack-c (a rime-predict dependency) has a real source
+# directory named preprocessor/debug.
+set(RIME_SOURCE_COPY_EXCLUDES
+    PATTERN ".git" EXCLUDE
+    PATTERN ".cache" EXCLUDE
+    PATTERN ".codegraph" EXCLUDE
+    PATTERN ".gitnexus" EXCLUDE
+    PATTERN ".claude" EXCLUDE
+    PATTERN ".agents" EXCLUDE
+    PATTERN ".omx" EXCLUDE
+    PATTERN ".vscode" EXCLUDE
+    PATTERN "build" EXCLUDE
+    PATTERN "boost-1.89.0" EXCLUDE
+    PATTERN "logs" EXCLUDE)
+
+macro(rime_copy_source)
     file(REMOVE_RECURSE "${RIME_SOURCE_COPY}")
-    file(COPY "${RIME_SOURCE_DIR}/" DESTINATION "${RIME_SOURCE_COPY}")
+    file(MAKE_DIRECTORY "${RIME_SOURCE_COPY}")
+    file(GLOB RIME_SOURCE_ENTRIES LIST_DIRECTORIES true
+        "${RIME_SOURCE_DIR}/*" "${RIME_SOURCE_DIR}/.*")
+    foreach(source_entry IN LISTS RIME_SOURCE_ENTRIES)
+        get_filename_component(source_entry_name "${source_entry}" NAME)
+        if(source_entry_name IN_LIST RIME_SOURCE_TOP_LEVEL_EXCLUDES)
+            continue()
+        endif()
+        file(COPY "${source_entry}" DESTINATION "${RIME_SOURCE_COPY}"
+            ${RIME_SOURCE_COPY_EXCLUDES})
+    endforeach()
+endmacro()
+
+macro(rime_full_prepare)
+    rime_copy_source()
     # A submodule's .git file points into the parent checkout and is invalid here.
-    file(REMOVE "${RIME_SOURCE_COPY}/.git")
+    file(REMOVE_RECURSE "${RIME_SOURCE_COPY}/.git")
     execute_process(
         COMMAND git init -q
         WORKING_DIRECTORY "${RIME_SOURCE_COPY}"
@@ -158,13 +206,28 @@ macro(rime_full_prepare)
         message(FATAL_ERROR "Failed to initialize copied librime source")
     endif()
     separate_arguments(RIME_PLUGIN_ARGS UNIX_COMMAND "${RIME_PLUGINS}")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env ${RIME_GIT_ENV}
-            "${RIME_BASH}" "${RIME_SOURCE_COPY}/install-plugins.sh" ${RIME_PLUGIN_ARGS}
-        WORKING_DIRECTORY "${RIME_SOURCE_COPY}"
-        RESULT_VARIABLE plugin_result)
-    if(NOT plugin_result EQUAL 0)
-        message(FATAL_ERROR "Failed to install librime plugins (exit ${plugin_result})")
+    # An out-of-tree fork may already carry the plugin checkouts (for example
+    # librime's own plugins/ directory). Only fetch the plugins that are
+    # missing, so an offline development checkout can still be built.
+    set(RIME_PLUGIN_ARGS_TO_INSTALL)
+    foreach(plugin_slug IN LISTS RIME_PLUGIN_ARGS)
+        string(REGEX REPLACE "@.*$" "" plugin_slug_base "${plugin_slug}")
+        get_filename_component(plugin_project "${plugin_slug_base}" NAME)
+        string(REGEX REPLACE "^librime-" "" plugin_name "${plugin_project}")
+        if(NOT EXISTS "${RIME_SOURCE_COPY}/plugins/${plugin_name}/CMakeLists.txt")
+            list(APPEND RIME_PLUGIN_ARGS_TO_INSTALL "${plugin_slug}")
+        endif()
+    endforeach()
+    if(RIME_PLUGIN_ARGS_TO_INSTALL)
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E env ${RIME_GIT_ENV}
+                "${RIME_BASH}" "${RIME_SOURCE_COPY}/install-plugins.sh"
+                ${RIME_PLUGIN_ARGS_TO_INSTALL}
+            WORKING_DIRECTORY "${RIME_SOURCE_COPY}"
+            RESULT_VARIABLE plugin_result)
+        if(NOT plugin_result EQUAL 0)
+            message(FATAL_ERROR "Failed to install librime plugins (exit ${plugin_result})")
+        endif()
     endif()
 
     foreach(plugin_slug IN LISTS RIME_PLUGIN_ARGS)
@@ -198,6 +261,17 @@ macro(rime_full_prepare)
     rime_apply_plugin_patch(lua librime-lua.patch)
     rime_apply_plugin_patch(octagram librime-octagram.patch)
     rime_apply_plugin_patch(predict librime-predict.patch)
+    # Fail fast if a plugin patch silently failed to apply (e.g. skipped due to
+    # a missing marker) — a stale plugin CMakeLists otherwise surfaces much
+    # later as confusing linker errors.
+    foreach(plugin_name IN ITEMS lua octagram predict)
+        if(EXISTS "${RIME_SOURCE_COPY}/plugins/${plugin_name}/CMakeLists.txt")
+            file(READ "${RIME_SOURCE_COPY}/plugins/${plugin_name}/CMakeLists.txt" patched_cmake)
+            if(NOT patched_cmake MATCHES "file-prefix-map")
+                message(FATAL_ERROR "Plugin patch not applied: ${plugin_name}")
+            endif()
+        endif()
+    endforeach()
 
     file(MAKE_DIRECTORY "${RIME_APPLIED_PATCH_DIR}")
     foreach(patch_file IN LISTS RIME_ROOT_PATCHES RIME_PLUGIN_PATCHES)
@@ -207,6 +281,7 @@ macro(rime_full_prepare)
     file(WRITE "${RIME_SOURCE_REVISION_STAMP}" "${RIME_SOURCE_REVISION}")
     file(WRITE "${RIME_PLUGIN_STAMP}" "${RIME_PLUGINS}")
     file(WRITE "${RIME_PATCH_STAMP}" "${RIME_DESIRED_PATCH_STATE}")
+    file(WRITE "${RIME_SOURCE_DIR_STAMP}" "${RIME_SOURCE_DIR}")
 endmacro()
 
 set(RIME_NEEDS_FULL_PREPARE FALSE)
@@ -214,7 +289,10 @@ if(NOT EXISTS "${RIME_SOURCE_COPY}/CMakeLists.txt"
     OR NOT EXISTS "${RIME_SOURCE_REVISION_STAMP}"
     OR NOT EXISTS "${RIME_PLUGIN_STAMP}"
     OR NOT EXISTS "${RIME_PATCH_STAMP}"
+    OR NOT EXISTS "${RIME_SOURCE_DIR_STAMP}"
     OR NOT EXISTS "${RIME_APPLIED_PATCH_DIR}")
+    set(RIME_NEEDS_FULL_PREPARE TRUE)
+elseif(NOT RIME_CURRENT_SOURCE_DIR STREQUAL RIME_SOURCE_DIR)
     set(RIME_NEEDS_FULL_PREPARE TRUE)
 elseif(NOT RIME_CURRENT_PLUGINS STREQUAL RIME_PLUGINS)
     set(RIME_NEEDS_FULL_PREPARE TRUE)
@@ -517,8 +595,11 @@ add_rime_dependency(marisa "${RIME_SOURCE_COPY}/deps/marisa-trie"
 add_rime_dependency(opencc "${RIME_SOURCE_COPY}/deps/opencc"
     ARGS -DENABLE_GTEST=OFF -DENABLE_BENCHMARK=OFF
     DEPENDS rime_marisa
+    # -i.bak works with both GNU sed (Linux) and BSD sed (macOS).
     PATCH_COMMAND ${RIME_BASH} -c
-        "sed -i '/^add_subdirectory(data)/d' '${RIME_SOURCE_COPY}/deps/opencc/CMakeLists.txt'")
+        "sed -i.bak '/^add_subdirectory(data)/d' '${RIME_SOURCE_COPY}/deps/opencc/CMakeLists.txt'")
+add_rime_dependency(sqlite3 "${RIME_SOURCE_COPY}/deps/sqlite3"
+    ARGS -DBUILD_SHELL=OFF)
 add_rime_dependency(yaml-cpp "${RIME_SOURCE_COPY}/deps/yaml-cpp"
     ARGS -DYAML_CPP_BUILD_CONTRIB=OFF -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF
         -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON
@@ -537,6 +618,7 @@ set(RIME_DEPENDENCY_MARKERS
     "${RIME_PREFIX}/lib/libleveldb.a"
     "${RIME_PREFIX}/lib/libmarisa.a"
     "${RIME_PREFIX}/lib/libopencc.a"
+    "${RIME_PREFIX}/lib/libsqlite3.a"
     "${RIME_PREFIX}/lib/libyaml-cpp.a")
 set(RIME_LIBRIME_DEPENDS)
 set(RIME_DEPENDENCY_PAIRS
@@ -549,6 +631,7 @@ set(RIME_DEPENDENCY_PAIRS
     "${RIME_PREFIX}/lib/libleveldb.a|rime_leveldb"
     "${RIME_PREFIX}/lib/libmarisa.a|rime_marisa"
     "${RIME_PREFIX}/lib/libopencc.a|rime_opencc"
+    "${RIME_PREFIX}/lib/libsqlite3.a|rime_sqlite3"
     "${RIME_PREFIX}/lib/libyaml-cpp.a|rime_yaml-cpp")
 foreach(dependency_pair IN LISTS RIME_DEPENDENCY_PAIRS)
     string(REPLACE "|" ";" dependency_parts "${dependency_pair}")

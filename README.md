@@ -9,9 +9,12 @@ ABI, and loads it from the app's `nativeLibraryDir`. Supporting another frontend
 means adding its discovery action/metadata (and any librime patches it needs);
 the payload stays the same.
 
-This repository is a template. It builds a near-upstream librime from the pinned
-submodule plus the standard plugins, so the end-to-end flow works out of the box;
-replace the payload with your own librime fork later.
+This checkout is wired to the `boomker/librime` fork through the
+`lib/librime` submodule. The fork adds Android/mobile behavior on top of
+upstream librime (platform detection, prediction defaults, dictionary
+performance fixes) and is built with the standard plugins. You can also build
+against an out-of-tree fork checkout without touching the submodule; see
+[Using an out-of-tree librime fork](#using-an-out-of-tree-librime-fork).
 
 ## Repository layout
 
@@ -21,7 +24,7 @@ app/                     Android app: manifest, discovery Activity, native build
   src/main/cpp/CMakeLists.txt    builds the plugin and stages librime.so
   src/main/cpp/plugin_template.c placeholder library; the real payload is librime.so
 lib/                     librime build orchestration
-  librime/               git submodule, the librime source
+  librime/               git submodule, the boomker/librime fork (or an out-of-tree checkout via rime.sourceDir)
   patches/               patches applied to librime and its plugins
   CMakeLists.txt         ExternalProject rules that build librime.so
 .github/workflows/build.yml    CI: builds debug + release APKs
@@ -48,6 +51,7 @@ Version selection is read from `local.properties` at build time:
 | `rime.ndkVersion` | `29.0.14206865` | `28.2.13676358` |
 | `rime.cmakeVersion` | `4.2.1` | `3.31.6` |
 | `rime.buildToolsVersion` | `37.0.0` | `36.0.0` |
+| `rime.sourceDir` | `lib/librime` submodule | unset (submodule) |
 
 `lib/librime` is pinned as a git submodule. Clone recursively or run
 `git submodule update --init --recursive`; the build records the submodule HEAD
@@ -68,11 +72,11 @@ The build produces one APK per ABI plus a universal APK. File name is
 `<applicationId>-<pluginVersionName>-<variant>-<abi|universal>.apk`:
 
 ```
-app/build/outputs/apk/debug/org.rime.plugin.template.debug-1.0.0-debug-arm64-v8a.apk
-app/build/outputs/apk/debug/org.rime.plugin.template.debug-1.0.0-debug-armeabi-v7a.apk
-app/build/outputs/apk/debug/org.rime.plugin.template.debug-1.0.0-debug-universal.apk
-app/build/outputs/apk/release/org.rime.plugin.template-1.0.0-release-arm64-v8a.apk
-app/build/outputs/apk/release/org.rime.plugin.template-1.0.0-release-universal.apk
+app/build/outputs/apk/debug/org.rime.plugin.fx_librime.debug-1.0.0-debug-arm64-v8a.apk
+app/build/outputs/apk/debug/org.rime.plugin.fx_librime.debug-1.0.0-debug-armeabi-v7a.apk
+app/build/outputs/apk/debug/org.rime.plugin.fx_librime.debug-1.0.0-debug-universal.apk
+app/build/outputs/apk/release/org.rime.plugin.fx_librime-1.0.0-release-arm64-v8a.apk
+app/build/outputs/apk/release/org.rime.plugin.fx_librime-1.0.0-release-universal.apk
 ...
 ```
 
@@ -91,6 +95,30 @@ Notes:
   to delete it. Pass `-PrimeBuildRoot=<dir>` to relocate it.
 - Boost is cached as `boost_1_89_0.tar.gz` in the repository root (gitignored)
   and reused on later builds.
+
+### Using an out-of-tree librime fork
+
+For local fork development, point the build at an existing checkout instead of
+the submodule. The path can come from `local.properties` (recommended, it is
+gitignored) or from a Gradle property:
+
+```properties
+# local.properties
+rime.sourceDir=/absolute/path/to/librime
+```
+
+```bash
+./gradlew :app:assembleDebug -PrimeSourceDir=/absolute/path/to/librime
+```
+
+The build copies only the buildable source tree (not `.git`, local build
+directories, or the downloaded Boost tree), applies the patches from
+`lib/patches/`, and reuses plugin checkouts already present under
+`plugins/` when available. If a plugin directory is missing it is cloned from
+GitHub as usual, so a fully populated fork checkout can also build offline.
+Changing the fork's HEAD triggers an incremental source refresh; uncommitted
+changes in the fork are not tracked, so commit them (or run
+`./gradlew :app:rimeClean`) before rebuilding.
 
 ## Signing
 
@@ -115,12 +143,12 @@ different key requires re-authorization.
 
 | Item | Value in this template | Where to change |
 | --- | --- | --- |
-| `applicationId` (release) | `org.rime.plugin.template` | `app/build.gradle.kts` |
+| `applicationId` (release) | `org.rime.plugin.fx_librime` | `app/build.gradle.kts` |
 | `applicationId` (debug) | `...plugin.template.debug` | `applicationIdSuffix` in `app/build.gradle.kts` |
-| `namespace` / Java package | `org.rime.plugin.template` | `app/build.gradle.kts` + `app/src/main/java/**` |
-| `PLUGIN_ID` | `template` | `app/src/main/AndroidManifest.xml` |
+| `namespace` / Java package | `org.rime.plugin.fx_librime` | `app/build.gradle.kts` + `app/src/main/java/**` |
+| `PLUGIN_ID` | `foxy-librime` | `app/src/main/AndroidManifest.xml` |
 | `SONAME` | `librime.so` | `app/src/main/AndroidManifest.xml` |
-| App label / strings | `Rime Plugin Template` | `app/src/main/res/values*/strings.xml` |
+| App label / strings | `Foxy Librime Plugin` | `app/src/main/res/values*/strings.xml` |
 | `pluginVersionName` | `1.0.0` | `app/build.gradle.kts` |
 
 The `applicationId` must differ from every frontend's package (Foxy ignores its
@@ -136,8 +164,9 @@ frontend validates. They are independent of any frontend:
 
 - The library file named by `SONAME` (default `librime.so`) is packaged in
   `lib/<abi>/` and ends up in the app's `nativeLibraryDir`.
-- It is a complete librime and exports `RimeGetApi` (and the usual librime
-  entry points).
+- It is a complete librime and exports the librime C API getter `rime_get_api`
+  (referred to as `RimeGetApi` in some frontend documentation), plus the usual
+  librime entry points.
 - `RIME_API_ABI` declares the librime `RimeApi` struct ABI. A frontend should
   call `RimeGetApi()` and check `api->data_size` against its own compiled-in
   `RimeApi` before using it.
@@ -206,9 +235,9 @@ usable as a neutral `librime.so`.
    `app/build.gradle.kts` and move `app/src/main/java/...` to the new package.
 2. Change `PLUGIN_ID`, `LIBRIME_VERSION`, the app label, and the generic
    metadata in `app/src/main/AndroidManifest.xml`.
-3. Replace the payload: point `lib/librime` at your fork, or change
-   `lib/CMakeLists.txt` and `app/src/main/cpp/CMakeLists.txt` to build your
-   library. Keep the output file name equal to `SONAME`.
+3. Replace the payload: point `lib/librime` (or `rime.sourceDir`) at your fork,
+   or change `lib/CMakeLists.txt` and `app/src/main/cpp/CMakeLists.txt` to build
+   your library. Keep the output file name equal to `SONAME`.
 4. Keep `API_VERSION`/`RIME_API_ABI` at `1` unless the contract changes. Adjust
    `supportedABIs` in `app/build.gradle.kts` to the ABIs you ship (32-bit and
    64-bit are both valid as long as they match the frontend process).

@@ -24,7 +24,7 @@
             android:value="1" />
         <meta-data
             android:name="org.rime.plugin.PLUGIN_ID"
-            android:value="template" />
+            android:value="foxy-librime" />
         <meta-data
             android:name="org.rime.plugin.SONAME"
             android:value="librime.so" />

@@ -1,4 +1,4 @@
-package org.rime.plugin.template;
+package org.rime.plugin.fx_librime;
 
 import android.app.Activity;
 import android.os.Bundle;
